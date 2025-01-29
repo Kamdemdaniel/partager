@@ -1,0 +1,238 @@
+
+#inlude <iostream>
+#include <stack>
+#include <vector>
+#include <sstream>
+#include <cctype>
+#include <cmath>
+#include <algorithm>
+
+// Structure pour un token (un élément de l'expression)
+struct Token {
+    std::string value; // Valeur du token (opérateur, variable, etc.)
+    int type;         // Type du token (0 : variable, 1 : opérateur, 2 : parenthèse)
+};
+
+// Définition des types d'opérateurs
+enum OperatorType {
+    AND,
+    OR,
+    NOT,
+    XOR,
+    IMPLIES,
+    EQUALS
+};
+
+// Fonction pour convertir une chaîne en majuscules
+std::string toUpper(std::string str) {
+    std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+    return str;
+}
+
+// Fonction pour vérifier si un caractère est un opérateur logique
+bool isOperator(const std::string& c) {
+     std::string upperC = toUpper(c);
+    return (upperC == "AND" || upperC == "OR" || upperC == "NOT" || upperC == "XOR" || upperC == "IMPLIES" || upperC == "EQUALS");
+}
+
+// Fonction pour obtenir la précédence des opérateurs
+int getPrecedence(const std::string& op) {
+    std::string upperOp = toUpper(op);
+    if (upperOp == "NOT") return 3; // La négation a une haute priorité
+    if (upperOp == "AND" || upperOp == "XOR") return 2; // Le ET et le OU exclusif
+    if (upperOp == "OR" || upperOp == "IMPLIES" || upperOp == "EQUALS") return 1; // Le OU
+    return 0; // Les parenthèses ont une priorité de 0
+}
+
+// Fonction pour transformer l'expression en notation postfixée
+std::vector<Token> infixToPostfix(const std::string& infix) {
+    std::vector<Token> postfix; // Vecteur pour stocker la notation postfixée
+    std::stack<Token> stack; // Pile pour stocker temporairement les opérateurs et les parenthèses
+
+    std::stringstream ss(infix);
+    std::string tokenStr;
+
+    while (ss >> tokenStr) {
+         std::string upperToken = toUpper(tokenStr);
+        if (isalpha(tokenStr[0])) { // Si le token est une variable
+            postfix.push_back({tokenStr, 0}); // 0 indique une variable
+        } else if (isOperator(tokenStr)) { // Si le token est un opérateur
+            while (!stack.empty() && stack.top().type == 1 &&
+                   getPrecedence(stack.top().value) >= getPrecedence(tokenStr)) {
+                postfix.push_back(stack.top()); // Ajoute l'opérateur de la pile à la sortie
+                stack.pop();
+            }
+            stack.push({tokenStr, 1}); // 1 indique un opérateur
+        } else if (tokenStr == "(") { // Si le token est une parenthèse ouvrante
+            stack.push({tokenStr, 2}); // 2 indique une parenthèse
+        } else if (tokenStr == ")") { // Si le token est une parenthèse fermante
+            while (!stack.empty() && stack.top().value != "(") {
+                postfix.push_back(stack.top()); // Ajoute les opérateurs de la pile jusqu'à la parenthèse ouvrante
+                stack.pop();
+            }
+            if (!stack.empty()) stack.pop(); // Enlève la parenthèse ouvrante de la pile
+        }
+    }
+
+    while (!stack.empty()) {
+        postfix.push_back(stack.top()); // Ajoute les opérateurs restants à la sortie
+        stack.pop();
+    }
+    return postfix;
+}
+
+// Fonction pour appliquer un opérateur logique
+bool applyOperator(const std::string& op, const std::vector<bool>& operands) {
+     std::string upperOp = toUpper(op);
+    if (upperOp == "NOT") {
+        return !operands[0];
+    }
+    if (upperOp == "AND") {
+        return operands[0] && operands[1];
+    }
+    if (upperOp == "OR") {
+        return operands[0] || operands[1];
+    }
+    if (upperOp == "XOR") {
+        return operands[0] != operands[1];
+    }
+    if (upperOp == "IMPLIES") {
+        return !operands[0] || operands[1];
+    }
+    if (upperOp == "EQUALS") {
+        return operands[0] == operands[1];
+    }
+    return false;
+}
+
+
+// Fonction pour évaluer une expression postfixée
+bool evaluatePostfix(const std::vector<Token>& postfix, const std::vector<bool>& variables) {
+   std::stack<bool> stack; // Pile pour stocker les résultats intermédiaires
+
+    for (const Token& token : postfix) {
+      if (token.type == 0) { // Si le token est une variable
+            // Trouver l'index de la variable
+             int index = token.value[0] - 'A';
+            if (index >= 0 && index < variables.size()) {
+                   stack.push(variables[index]); // Récupère la valeur de la variable
+             } else {
+                 std::cerr << "Error: invalid variable index" << std::endl;
+                  return false; // Error
+               }
+         }
+        else if (token.type == 1) { // Si le token est un opérateur
+          std::vector<bool> operands;
+          if(toUpper(token.value) == "NOT") {
+             if(!stack.empty()) {
+               operands.push_back(stack.top());
+                stack.pop();
+             } else {
+                 std::cerr << "Error: stack is empty for not operation" << std::endl;
+               return false; // Error
+              }
+
+
+          } else {
+               if(stack.size() >= 2) {
+                   bool operand2 = stack.top();
+                    stack.pop();
+                    bool operand1 = stack.top();
+                   stack.pop();
+                   operands.push_back(operand1);
+                   operands.push_back(operand2);
+               } else {
+                 std::cerr << "Error: Not enough operands for operation " << token.value <<  std::endl;
+                   return false; // Error
+               }
+          }
+
+
+           bool result = applyOperator(token.value, operands);
+           stack.push(result);
+       }
+     }
+     if(stack.size() == 1) {
+          return stack.top();
+     } else {
+          std::cerr << "Error: Stack size not 1" << std::endl;
+           return false; // Error
+     }
+}
+
+int main() {
+    while (true) { // Boucle pour le mode interactif
+        std::string infixExpression;
+        std::cout << "Entrez la formule logique (ou 'quit' pour quitter) : ";
+        std::getline(std::cin, infixExpression);
+
+         if (infixExpression == "quit") {
+            break; // Sortir de la boucle si l'utilisateur tape 'quit'
+        }
+
+        std::vector<Token> postfix = infixToPostfix(infixExpression);
+        int numVariables = 0;
+        for (const auto& token : postfix) {
+            if (token.type == 0) {
+                numVariables = std::max(numVariables, token.value[0] - 'A' + 1);
+            }
+        }
+        if (numVariables > 5) {
+            std::cout << "Le nombre de variables est supérieur à 5, veuillez entrer un nombre plus petit.\n";
+             continue;
+        }
+
+        int numCombinations = static_cast<int>(std::pow(2, numVariables));
+        bool isSatisfiable = false;
+        bool isTautology = true;
+        bool isContradiction = true;
+        std::cout << "\nRésultats :\n";
+
+        for (int i = 0; i < numCombinations; i++) {
+           std::vector<bool> variables(numVariables); // Tableau pour les valeurs des variables
+
+            for(int j = 0; j < numVariables; j++) {
+               variables[j] = (i >> j) & 1;
+            }
+
+            bool result = evaluatePostfix(postfix, variables);
+             if(!result && !(numVariables == 0)) {
+                  isTautology = false;
+             } else if (result && !(numVariables == 0)){
+                  isContradiction = false;
+                   isSatisfiable = true;
+            }
+
+
+             std::cout << "Assignation : ";
+            for (int j = 0; j < numVariables; j++) {
+                 std::cout << (char)('A' + j) << "=" << (variables[j] ? "true" : "false") << " ";
+            }
+             if(numVariables !=0) {
+               std::cout << "  | Résultat : " << (result ? "true" : "false") << std::endl;
+           } else {
+               std::cout << "  | Résultat : " << (result ? "true" : "false") << std::endl;
+           }
+
+        }
+        
+        if(numVariables == 0 && !evaluatePostfix(postfix, {})){
+            isTautology = false;
+        } else if (numVariables == 0 && evaluatePostfix(postfix, {})) {
+             isContradiction = false;
+              isSatisfiable = true;
+        }
+
+         if (isTautology && numVariables !=0) {
+              std::cout << "\nLa formule est une tautologie (toujours vraie).\n";
+        } else if (isContradiction && numVariables !=0) {
+            std::cout << "\nLa formule est une contradiction (toujours fausse).\n";
+        } else if (isSatisfiable) {
+            std::cout << "\nLa formule est satisfaisable.\n";
+        }
+        else {
+              std::cout << "\nLa formule n'est pas satisfaisable.\n";
+        }
+      }
+    return 0;
+}
